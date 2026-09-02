@@ -1,4 +1,5 @@
-from scapy.all import sniff, IP, TCP, UDP
+from scapy.all import sniff, IP, TCP, UDP,ICMP
+from scapy.layers.inet6 import IPv6
 from datetime import datetime
 
 
@@ -21,6 +22,7 @@ def packet_callback(packet):
         "dst_port": packet[TCP].dport if TCP in packet else (packet[UDP].dport if UDP in packet else None),
         "packet_length": len(packet),
         "tcp_flags": packet[TCP].flags if TCP in packet else None,
+        "ttl": packet[IP].ttl if IP in packet else None
     }
 
 #basic network collector that captures packets and prints their details to the console. It uses the Scapy library to sniff network traffic and extract relevant information from IP, TCP, and UDP packets.    
@@ -28,7 +30,6 @@ def packet_callback(packet):
         packet_data["src_ip"] = packet[IP].src
         packet_data["dst_ip"] = packet[IP].dst
         
-
         if TCP in packet:
             packet_data["src_port"] = packet[TCP].sport
             packet_data["dst_port"] = packet[TCP].dport
@@ -38,10 +39,29 @@ def packet_callback(packet):
             packet_data["src_port"] = packet[UDP].sport
             packet_data["dst_port"] = packet[UDP].dport
             packet_data["protocol"] = "udp"
+        elif ICMP in packet:
+            packet_data["protocol"] = "icmp"
         else:
             packet_data["src_port"] = None
             packet_data["dst_port"] = None
-
+    elif IPv6 in packet:
+        packet_data["src_ip"] = packet[IPv6].src
+        packet_data["dst_ip"] = packet[IPv6].dst
+        packet_data["ttl"] = packet[IPv6].hlim  # Hop Limit field indicates the TTL
+        if TCP in packet:
+            packet_data["src_port"] = packet[TCP].sport
+            packet_data["dst_port"] = packet[TCP].dport
+            packet_data["tcp_flags"] = packet[TCP].flags
+            packet_data["protocol"] = "tcp"
+        elif UDP in packet:
+            packet_data["src_port"] = packet[UDP].sport
+            packet_data["dst_port"] = packet[UDP].dport
+            packet_data["protocol"] = "udp"
+        elif ICMP in packet:
+            packet_data["protocol"] = "icmp"
+        else:
+            packet_data["src_port"] = None
+            packet_data["dst_port"] = None
     return packet_data
 
 if __name__ == "__main__":
