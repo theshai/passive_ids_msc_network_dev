@@ -1,6 +1,7 @@
 from scapy.all import sniff, IP, TCP, UDP,ICMP
 from scapy.layers.inet6 import IPv6
 from datetime import datetime
+import live.network_flow_tracker as ft
 
 
 def start_sniffing(interface=None):
@@ -8,7 +9,15 @@ def start_sniffing(interface=None):
     sniff(iface=interface, prn=packet_collector, store=False)  
 
 def packet_collector(packet):
-    print("Packet captured:",packet_callback(packet))      
+    #print("Packet captured:",packet_callback(packet))    
+    tracker = ft.networkFlowTracker()
+    packet_data = packet_callback(packet)  
+    flow=tracker.process_packet(packet_data)
+    print(
+        f"Flow packets={flow.forward_packet_count} "
+        f"bytes={flow.forward_packet_count} "  # Assuming each packet is 8 bytes (this is a simplification)
+        f"duration={flow.duration}"
+    )
 
 def packet_callback(packet):
 
@@ -22,7 +31,7 @@ def packet_callback(packet):
         "dst_port": packet[TCP].dport if TCP in packet else (packet[UDP].dport if UDP in packet else None),
         "packet_length": len(packet),
         "tcp_flags": packet[TCP].flags if TCP in packet else None,
-        "ttl": packet[IP].ttl if IP in packet else None
+        "ttl": packet[IP].ttl if IP in packet else None # also hop limit for IPv6 packets
     }
 
 #basic network collector that captures packets and prints their details to the console. It uses the Scapy library to sniff network traffic and extract relevant information from IP, TCP, and UDP packets.    
