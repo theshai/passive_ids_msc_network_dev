@@ -9,8 +9,9 @@ tracker = ft.networkFlowTracker()
 def start_sniffing(interface=None):
     print("Starting packet sniffing...")
     sniff(iface=interface, prn=packet_collector, store=False)  
+    
+    #for testing purposes, we can use a filter to capture only ICMP packets to and from
     """
-    for testing purposes, we can use a filter to capture only ICMP packets to and from
     sniff(
         iface=interface,
         filter="icmp and host 8.8.8.8",
@@ -18,6 +19,7 @@ def start_sniffing(interface=None):
         store=False
     )
     """
+    
 def packet_collector(packet):
     #print("Packet captured:",packet_callback(packet))    
     
@@ -26,9 +28,13 @@ def packet_collector(packet):
     print(
     f"Forward packets={flow.forward_packet_count} "
     f"Backward packets={flow.backward_packet_count} "
+    f"Total packets={flow.total_packets} "
     f"Forward bytes={flow.forward_bytes} "
     f"Backward bytes={flow.backward_bytes} "
-    f"duration={flow.duration:.6f}"
+    f"Total bytes={flow.total_bytes} "
+    f"duration={flow.duration:.6f} "
+    f"Packet rate={flow.packet_rate:.2f} "
+    f"Byte rate={flow.byte_rate:.2f} "
    )
 
 def packet_callback(packet):
