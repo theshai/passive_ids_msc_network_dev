@@ -3,21 +3,33 @@ from scapy.layers.inet6 import IPv6
 from datetime import datetime
 import live.network_flow_tracker as ft
 
+#one tracker for the entire program, to keep track of all flows across packets
+tracker = ft.networkFlowTracker()
 
 def start_sniffing(interface=None):
     print("Starting packet sniffing...")
     sniff(iface=interface, prn=packet_collector, store=False)  
-
+    """
+    for testing purposes, we can use a filter to capture only ICMP packets to and from
+    sniff(
+        iface=interface,
+        filter="icmp and host 8.8.8.8",
+        prn=packet_collector,
+        store=False
+    )
+    """
 def packet_collector(packet):
     #print("Packet captured:",packet_callback(packet))    
-    tracker = ft.networkFlowTracker()
+    
     packet_data = packet_callback(packet)  
     flow=tracker.process_packet(packet_data)
     print(
-        f"Flow packets={flow.forward_packet_count} "
-        f"bytes={flow.forward_packet_count} "  # Assuming each packet is 8 bytes (this is a simplification)
-        f"duration={flow.duration}"
-    )
+    f"Forward packets={flow.forward_packet_count} "
+    f"Backward packets={flow.backward_packet_count} "
+    f"Forward bytes={flow.forward_bytes} "
+    f"Backward bytes={flow.backward_bytes} "
+    f"duration={flow.duration:.6f}"
+   )
 
 def packet_callback(packet):
 
