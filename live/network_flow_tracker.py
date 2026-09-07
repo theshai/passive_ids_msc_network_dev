@@ -1,8 +1,9 @@
 from datetime import datetime
 import time
 import threading
+from extractors import unsw_extractor
 
-FLOW_TIMEOUT = 30  # Timeout in seconds for flow expiration
+FLOW_TIMEOUT = 30  # Timeout in seconds for flow expiration (random)
 
 class networkFlowObject:
     #basic network flow class that represents a network flow and its associated attributes. 
@@ -21,6 +22,8 @@ class networkFlowObject:
         self.backward_packet_count = 0
         self.forward_bytes = 0
         self.backward_bytes = 0
+        self.source_ttl=None
+        self.destination_ttl=None
         self.update(packet)
 
     def update(self, packet):
@@ -32,10 +35,14 @@ class networkFlowObject:
                 and (packet["dst_ip"], packet["dst_port"]) == (self.dst_ip, self.dst_port)):
                 self.forward_packet_count += 1    
                 self.forward_bytes += packet["packet_length"]  # Update forward bytes  
+                if packet["ttl"] is not None:
+                    self.source_ttl = packet["ttl"]  # Store the source TTL for the first packet in the flow
            elif ((packet["src_ip"], packet["src_port"]) == (self.dst_ip, self.dst_port) 
                  and (packet["dst_ip"], packet["dst_port"]) == (self.src_ip, self.src_port)):
                  self.backward_packet_count += 1  
                  self.backward_bytes += packet["packet_length"]  # Update backward bytes
+                 if packet["ttl"] is not None:
+                    self.destination_ttl = packet["ttl"]  # Store the destination TTL for the first packet in the flow
 
     def is_expired(self,timeout=FLOW_TIMEOUT):
         #basic flow expiration check that determines if a flow has expired based on the time elapsed since the last seen packet. 
@@ -68,8 +75,23 @@ class networkFlowObject:
             return 0
         else:
             return self.total_bytes / self.duration
+        
+    #added properties to get the additional features as we go along
 
+    @property
+    def source_mean_packet_size(self):
+        if self.forward_packet_count == 0:
+            return 0
+        else:
+            return self.forward_bytes / self.forward_packet_count
 
+    @property
+    def destination_mean_packet_size(self):
+        if self.backward_packet_count == 0:
+            return 0
+        else:
+            return self.backward_bytes / self.backward_packet_count
+        
 class networkFlowTracker:
     #basic network flow class that represents a network flow and its associated attributes.
     def __init__(self) :
@@ -127,6 +149,7 @@ class networkFlowTracker:
 
         for flow_key, flow in expired_flows:
 
+            """
             print(
                 "\nExpired flow details: "
                 f"Removing expired flow: {flow_key} "
@@ -139,7 +162,11 @@ class networkFlowTracker:
                 f"duration={flow.duration:.6f} "
                 f"Packet rate={flow.packet_rate:.2f} "
                 f"Byte rate={flow.byte_rate:.2f}"
-            )               
+            )  
+            """
+            #testing the extraction of flow data using the UNSW extractor
+            extracted_data = unsw_extractor.extract_unsw_from_flow(flow)   
+            print("UNSW features:", extracted_data)          
                 
              
 

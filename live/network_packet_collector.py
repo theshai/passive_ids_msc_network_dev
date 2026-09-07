@@ -25,6 +25,8 @@ def packet_collector(packet):
     
     packet_data = packet_callback(packet)  
     flow=tracker.process_packet(packet_data)
+    """"
+    no need for that, I only care about the expired flows, so I will remove the print statement for the flow details here.
     print(
     f"Forward packets={flow.forward_packet_count} "
     f"Backward packets={flow.backward_packet_count} "
@@ -36,6 +38,7 @@ def packet_collector(packet):
     f"Packet rate={flow.packet_rate:.2f} "
     f"Byte rate={flow.byte_rate:.2f} "
    )
+   """
 
 def packet_callback(packet):
 
