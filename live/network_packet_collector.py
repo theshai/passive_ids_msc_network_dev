@@ -60,6 +60,10 @@ def packet_callback(packet):
         "ttl": packet[IP].ttl if IP in packet else None, # also hop limit for IPv6 packets
         "icmp_type":None,
         "icmp_code": None,
+        "tcp_window":None,
+        "tcp_seq":None,
+        "tcp_ack":None,
+        "tcp_payload_len": 0,
     }
 
 #basic network collector that captures packets and prints their details to the console. It uses the Scapy library to sniff network traffic and extract relevant information from IP, TCP, and UDP packets.    
@@ -72,6 +76,11 @@ def packet_callback(packet):
             packet_data["src_port"] = packet[TCP].sport
             packet_data["dst_port"] = packet[TCP].dport
             packet_data["tcp_flags"] = packet[TCP].flags
+            packet_data["tcp_window"] = packet[TCP].window
+            packet_data["tcp_seq"] = packet[TCP].seq
+            packet_data["tcp_ack"] = packet[TCP].ack
+            packet_data["tcp_payload_len"] = len(bytes(packet[TCP].payload))
+
             packet_data["protocol"] = "tcp"
         elif UDP in packet:
             packet_data["src_port"] = packet[UDP].sport
@@ -91,6 +100,11 @@ def packet_callback(packet):
             packet_data["src_port"] = packet[TCP].sport
             packet_data["dst_port"] = packet[TCP].dport
             packet_data["tcp_flags"] = packet[TCP].flags
+            packet_data["tcp_window"] = packet[TCP].window
+            packet_data["tcp_seq"] = packet[TCP].seq
+            packet_data["tcp_ack"] = packet[TCP].ack
+            packet_data["tcp_payload_len"] = len(bytes(packet[TCP].payload))
+
             packet_data["protocol"] = "tcp"
         elif UDP in packet:
             packet_data["src_port"] = packet[UDP].sport

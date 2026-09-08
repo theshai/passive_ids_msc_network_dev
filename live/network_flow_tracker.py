@@ -35,71 +35,200 @@ class networkFlowObject:
         self.tcp_ack_seen = False
         self.tcp_fin_seen = False
         self.tcp_rst_seen = False
+        self.source_window = None
+        self.destination_window = None
+        self.source_tcp_base_seq = None
+        self.destination_tcp_base_seq = None
+        
+        self.source_loss = 0
+        self.destination_loss = 0
+        
+        self.source_tcp_sequences = set()
+        self.destination_tcp_sequences = set()
+
         self.icmp_types = set()
         self.icmp_codes = set()
+
+       
+
+        self.tcp_syn_time = None
+        self.tcp_synack_time = None
+        self.tcp_ack_time = None
+
+        self.tcp_synack = 0
+        self.tcp_ackdat = 0
+
         self.update(packet)
 
     def update(self, packet):
-           now = datetime.now()
-           self.last_seen = now
-           # Track TCP flags
-           if self.protocol == "tcp" and packet.get("tcp_flags") is not None:
-                flags = str(packet["tcp_flags"])
-                if "S" in flags:
-                    self.tcp_syn_seen = True
-                if "A" in flags:
-                    self.tcp_ack_seen = True
-                if "F" in flags:
-                    self.tcp_fin_seen = True
-                if "R" in flags:
-                    self.tcp_rst_seen = True
-                #flag debug
-                print(
-                "TCP:",
-                packet["src_ip"],
-                "->",
-                packet["dst_ip"],
-                "flags=",
-                packet.get("tcp_flags")
-            )
+        now = datetime.now()
+        self.last_seen = now
 
-            # Track ICMP message types
-           if self.protocol == "icmp":
+        # Track TCP flags
+        if self.protocol == "tcp" and packet.get("tcp_flags") is not None:
+
+            flags = str(packet["tcp_flags"])
+
+            # SYN-ACK must be checked BEFORE plain SYN
+            if "S" in flags and "A" in flags:
+
+                self.tcp_ack_seen = True
+
+                # Record first SYN-ACK only
+                if self.tcp_synack_time is None:
+                    self.tcp_synack_time = now
+
+                    # SYN -> SYN-ACK
+                    if self.tcp_syn_time is not None:
+                        self.tcp_synack = (
+                            self.tcp_synack_time - self.tcp_syn_time
+                        ).total_seconds()
+
+            # Plain SYN
+            elif "S" in flags:
+
+                self.tcp_syn_seen = True
+
+                # Record first SYN only
+                if self.tcp_syn_time is None:
+                    self.tcp_syn_time = now
+
+            # ACK
+            if "A" in flags:
+
+                self.tcp_ack_seen = True
+
+                # We want the ACK AFTER SYN-ACK
+                if (
+                    self.tcp_synack_time is not None
+                    and self.tcp_ack_time is None
+                    and "S" not in flags
+                ):
+                    self.tcp_ack_time = now
+
+                    self.tcp_ackdat = (
+                        self.tcp_ack_time - self.tcp_synack_time
+                    ).total_seconds()
+
+            if "F" in flags:
+                self.tcp_fin_seen = True
+
+            if "R" in flags:
+                self.tcp_rst_seen = True
+
+        # Track ICMP message types
+        if self.protocol == "icmp":
             icmp_type = packet.get("icmp_type")
             icmp_code = packet.get("icmp_code")
+
             if icmp_type is not None:
                 self.icmp_types.add(icmp_type)
+
             if icmp_code is not None:
                 self.icmp_codes.add(icmp_code)
 
-           #fix for forward and backward packet count based on the direction of the packet in relation to the flow's
-           # source and destination IP addresses and ports.
-           if (
-               (packet["src_ip"], packet["src_port"])  == (self.src_ip, self.src_port) 
-                and (packet["dst_ip"], packet["dst_port"]) == (self.dst_ip, self.dst_port)):
-                self.forward_packet_count += 1    
-                self.forward_bytes += packet["packet_length"]  # Update forward bytes  
+        # Forward packet
+        if (
+            (packet["src_ip"], packet["src_port"]) == (self.src_ip, self.src_port)
+            and
+            (packet["dst_ip"], packet["dst_port"]) == (self.dst_ip, self.dst_port)
+        ):
 
-                if packet["ttl"] is not None:
-                    self.source_ttl = packet["ttl"]  # Store the source TTL for the first packet in the flow
+            self.forward_packet_count += 1
+            self.forward_bytes += packet["packet_length"]
 
-                if self.last_forward_packet_time is not None:
-                    diff = (now-self.last_forward_packet_time).total_seconds()*1000 #it is in milliseconds, as the interpacket time is usually measured in milliseconds
-                    self.forward_interpacket_times.append(diff)
-                self.last_forward_packet_time = now
+            if packet["ttl"] is not None:
+                self.source_ttl = packet["ttl"]
 
-           elif ((packet["src_ip"], packet["src_port"]) == (self.dst_ip, self.dst_port) 
-                 and (packet["dst_ip"], packet["dst_port"]) == (self.src_ip, self.src_port)):
-                 self.backward_packet_count += 1  
-                 self.backward_bytes += packet["packet_length"]  # Update backward bytes
+            # TCP source window and base sequence
+            if self.protocol == "tcp":
 
-                 if packet["ttl"] is not None:
-                    self.destination_ttl = packet["ttl"]  # Store the destination TTL for the first packet in the flow
+                
+                seq = packet.get("tcp_seq")
+                payload_len = packet.get("tcp_payload_len", 0)
 
-                 if self.last_backward_packet_time is not None:
-                    diff = (now-self.last_backward_packet_time).total_seconds()*1000 #it is in milliseconds, as the interpacket time is usually measured in milliseconds
-                    self.backward_interpacket_times.append(diff)
-                 self.last_backward_packet_time = now    
+                # Only count packets carrying data
+                if seq is not None and payload_len > 0:
+
+                    packet_sig = (seq,payload_len) # a better signature
+                    if packet_sig in self.source_tcp_sequences:
+                                        self.source_loss += 1
+                    else:
+                        self.source_tcp_sequences.add(packet_sig)
+                    if seq in self.source_tcp_sequences:
+                        self.source_loss += 1
+                    else:
+                        self.source_tcp_sequences.add(seq)
+                
+
+                if packet.get("tcp_window") is not None:
+                    self.source_window = packet["tcp_window"]
+
+                if (
+                    self.source_tcp_base_seq is None
+                    and packet.get("tcp_seq") is not None
+                ):
+                    self.source_tcp_base_seq = packet["tcp_seq"]
+
+            if self.last_forward_packet_time is not None:
+                diff = (
+                    now - self.last_forward_packet_time
+                ).total_seconds() * 1000
+
+                self.forward_interpacket_times.append(diff)
+
+            self.last_forward_packet_time = now
+
+        # Backward packet
+        elif (
+            (packet["src_ip"], packet["src_port"]) == (self.dst_ip, self.dst_port)
+            and
+            (packet["dst_ip"], packet["dst_port"]) == (self.src_ip, self.src_port)
+        ):
+
+            self.backward_packet_count += 1
+            self.backward_bytes += packet["packet_length"]
+
+            if packet["ttl"] is not None:
+                self.destination_ttl = packet["ttl"]
+
+            # TCP destination window and base sequence
+            if self.protocol == "tcp":
+
+                seq = packet.get("tcp_seq")
+                payload_len = packet.get("tcp_payload_len", 0)
+
+                # Only count packets carrying data
+                if seq is not None and payload_len > 0:
+
+                    packet_sig=(seq,payload_len)
+                    if packet_sig in self.destination_tcp_sequences:
+                        self.destination_loss += 1
+                    else:
+                        self.destination_tcp_sequences.add(packet_sig)
+                        
+                    if seq in self.destination_tcp_sequences:
+                        self.destination_loss += 1
+                    else:
+                        self.destination_tcp_sequences.add(seq)
+
+                if packet.get("tcp_window") is not None:
+                    self.destination_window = packet["tcp_window"]
+
+                if (
+                    self.destination_tcp_base_seq is None
+                    and packet.get("tcp_seq") is not None
+                ):
+                    self.destination_tcp_base_seq = packet["tcp_seq"]
+
+            if self.last_backward_packet_time is not None:
+                diff = (
+                    now - self.last_backward_packet_time
+                ).total_seconds() * 1000
+
+                self.backward_interpacket_times.append(diff)
+
+            self.last_backward_packet_time = now   
                 
 
     def is_expired(self,timeout=FLOW_TIMEOUT):
@@ -236,7 +365,42 @@ class networkFlowObject:
 
         return "no"
 
-    
+    @property
+    def swin(self):
+        return self.source_window if self.source_window is not None else 0
+
+    @property
+    def dwin(self):
+        return self.destination_window if self.destination_window is not None else 0
+
+    @property
+    def stcpb(self):
+        return self.source_tcp_base_seq if self.source_tcp_base_seq is not None else 0
+
+    @property
+    def dtcpb(self):
+        return self.destination_tcp_base_seq if self.destination_tcp_base_seq is not None else 0
+
+    @property
+    def synack(self):
+        return self.tcp_synack
+
+    @property
+    def ackdat(self):
+        return self.tcp_ackdat
+
+    @property
+    def tcprtt(self):
+        return self.tcp_synack + self.tcp_ackdat
+
+    @property
+    def sloss(self):
+        return self.source_loss
+
+    @property
+    def dloss(self):
+        return self.destination_loss
+   
 class networkFlowTracker:
     #basic network flow class that represents a network flow and its associated attributes.
     def __init__(self) :
@@ -311,7 +475,9 @@ class networkFlowTracker:
             """
             #testing the extraction of flow data using the UNSW extractor
             extracted_data = unsw_extractor.extract_unsw_from_flow(flow)   
-            print("UNSW features:", extracted_data)          
+            print("UNSW features:", extracted_data) 
+            
+               
                 
              
 

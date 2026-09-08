@@ -30,9 +30,17 @@ def extract_unsw_from_flow(flow):
         "dinpkt":flow.destination_interpacket_time_mean, 
         "sjit":flow.source_jitter,
         "djit":flow.destination_jitter,
+        "sloss": flow.sloss,
+        "dloss": flow.dloss,
         "sload": flow.forward_bytes*8 / flow.duration if flow.duration >= MIN_FLOW_DURATION else 0, #remove meaningless if duration is too small to avoid division by zero or unrealistic values
         "dload": flow.backward_bytes*8 / flow.duration if flow.duration >= MIN_FLOW_DURATION else 0,#remove meaningless if duration is too small to avoid division by zero or unrealistic values
-       
+        "swin": flow.swin,
+        "dwin": flow.dwin,
+        "stcpb": flow.stcpb,
+        "dtcpb": flow.dtcpb,
+        "synack": flow.synack,
+        "ackdat": flow.ackdat,
+        "tcprtt": flow.tcprtt
       
     }
  
