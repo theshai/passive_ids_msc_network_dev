@@ -9,7 +9,8 @@ def create_test_packet(
         src_port=5000,
         dst_port=443,
         protocol="tcp",
-        packet_length=100
+        packet_length=100,
+        ttl=None
 ):
     return {
         "src_ip": src_ip,
@@ -17,7 +18,8 @@ def create_test_packet(
         "src_port": src_port,
         "dst_port": dst_port,
         "protocol": protocol,
-        "packet_length": packet_length  
+        "packet_length": packet_length,
+        "ttl": ttl
     }
 
 def test_generate_flow_key_different_packets():

@@ -24,6 +24,11 @@ def packet_collector(packet):
     #print("Packet captured:",packet_callback(packet))    
     
     packet_data = packet_callback(packet)  
+
+    #getting rid of no data and no protocol packets, as they are not useful for flow tracking
+    if packet_data is None or packet_data["protocol"] is None:
+        return
+    
     flow=tracker.process_packet(packet_data)
     """"
     no need for that, I only care about the expired flows, so I will remove the print statement for the flow details here.
@@ -52,14 +57,17 @@ def packet_callback(packet):
         "dst_port": packet[TCP].dport if TCP in packet else (packet[UDP].dport if UDP in packet else None),
         "packet_length": len(packet),
         "tcp_flags": packet[TCP].flags if TCP in packet else None,
-        "ttl": packet[IP].ttl if IP in packet else None # also hop limit for IPv6 packets
+        "ttl": packet[IP].ttl if IP in packet else None, # also hop limit for IPv6 packets
+        "icmp_type":None,
+        "icmp_code": None,
     }
 
 #basic network collector that captures packets and prints their details to the console. It uses the Scapy library to sniff network traffic and extract relevant information from IP, TCP, and UDP packets.    
     if IP in packet:
         packet_data["src_ip"] = packet[IP].src
         packet_data["dst_ip"] = packet[IP].dst
-        
+        packet_data["ttl"] = packet[IP].ttl
+
         if TCP in packet:
             packet_data["src_port"] = packet[TCP].sport
             packet_data["dst_port"] = packet[TCP].dport
@@ -71,6 +79,7 @@ def packet_callback(packet):
             packet_data["protocol"] = "udp"
         elif ICMP in packet:
             packet_data["protocol"] = "icmp"
+            packet_data["icmp_type"] = packet[ICMP].type
         else:
             packet_data["src_port"] = None
             packet_data["dst_port"] = None
@@ -89,6 +98,8 @@ def packet_callback(packet):
             packet_data["protocol"] = "udp"
         elif ICMP in packet:
             packet_data["protocol"] = "icmp"
+            packet_data["icmp_type"] = packet[ICMP].type
+            packet_data["icmp_code"] = packet[ICMP].code
         else:
             packet_data["src_port"] = None
             packet_data["dst_port"] = None

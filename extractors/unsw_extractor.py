@@ -1,3 +1,4 @@
+MIN_FLOW_DURATION = 0.001  # Minimum duration in seconds to consider a flow for rate calculations
 
 def extract_unsw_from_flow(flow):
     """
@@ -14,6 +15,8 @@ def extract_unsw_from_flow(flow):
     return {
         "dur": flow.duration,
         "proto": flow.protocol,
+        "service":flow.service,
+        "state":flow.state,
         "spkts": flow.forward_packet_count,
         "dpkts": flow.backward_packet_count,
         "sbytes": flow.forward_bytes,
@@ -23,9 +26,13 @@ def extract_unsw_from_flow(flow):
         "dttl": flow.destination_ttl if flow.destination_ttl is not None else 0,  # Use 0 if destination_ttl is None    
         "smean":flow.source_mean_packet_size,
         "dmean":flow.destination_mean_packet_size,
-        "sload": flow.forward_bytes*8 / flow.duration if flow.duration >= 0.01 else 0, #remove meaningless if duration is too small to avoid division by zero or unrealistic values
-        "dload": flow.backward_bytes*8 / flow.duration if flow.duration >= 0.01 else 0,#remove meaningless if duration is too small to avoid division by zero or unrealistic values
-
+        "sinpkt":flow.source_interpacket_time_mean,
+        "dinpkt":flow.destination_interpacket_time_mean, 
+        "sjit":flow.source_jitter,
+        "djit":flow.destination_jitter,
+        "sload": flow.forward_bytes*8 / flow.duration if flow.duration >= MIN_FLOW_DURATION else 0, #remove meaningless if duration is too small to avoid division by zero or unrealistic values
+        "dload": flow.backward_bytes*8 / flow.duration if flow.duration >= MIN_FLOW_DURATION else 0,#remove meaningless if duration is too small to avoid division by zero or unrealistic values
+       
       
     }
  

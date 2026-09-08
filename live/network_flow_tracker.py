@@ -1,9 +1,12 @@
 from datetime import datetime
 import time
 import threading
+import statistics
+from arrow import now
 from extractors import unsw_extractor
 
 FLOW_TIMEOUT = 30  # Timeout in seconds for flow expiration (random)
+MIN_FLOW_DURATION = 0.001  # Minimum duration in seconds to consider a flow for rate calculations
 
 class networkFlowObject:
     #basic network flow class that represents a network flow and its associated attributes. 
@@ -24,10 +27,51 @@ class networkFlowObject:
         self.backward_bytes = 0
         self.source_ttl=None
         self.destination_ttl=None
+        self.last_forward_packet_time = None
+        self.last_backward_packet_time = None
+        self.forward_interpacket_times = []
+        self.backward_interpacket_times = []
+        self.tcp_syn_seen = False
+        self.tcp_ack_seen = False
+        self.tcp_fin_seen = False
+        self.tcp_rst_seen = False
+        self.icmp_types = set()
+        self.icmp_codes = set()
         self.update(packet)
 
     def update(self, packet):
-           self.last_seen = datetime.now()
+           now = datetime.now()
+           self.last_seen = now
+           # Track TCP flags
+           if self.protocol == "tcp" and packet.get("tcp_flags") is not None:
+                flags = str(packet["tcp_flags"])
+                if "S" in flags:
+                    self.tcp_syn_seen = True
+                if "A" in flags:
+                    self.tcp_ack_seen = True
+                if "F" in flags:
+                    self.tcp_fin_seen = True
+                if "R" in flags:
+                    self.tcp_rst_seen = True
+                #flag debug
+                print(
+                "TCP:",
+                packet["src_ip"],
+                "->",
+                packet["dst_ip"],
+                "flags=",
+                packet.get("tcp_flags")
+            )
+
+            # Track ICMP message types
+           if self.protocol == "icmp":
+            icmp_type = packet.get("icmp_type")
+            icmp_code = packet.get("icmp_code")
+            if icmp_type is not None:
+                self.icmp_types.add(icmp_type)
+            if icmp_code is not None:
+                self.icmp_codes.add(icmp_code)
+
            #fix for forward and backward packet count based on the direction of the packet in relation to the flow's
            # source and destination IP addresses and ports.
            if (
@@ -35,14 +79,28 @@ class networkFlowObject:
                 and (packet["dst_ip"], packet["dst_port"]) == (self.dst_ip, self.dst_port)):
                 self.forward_packet_count += 1    
                 self.forward_bytes += packet["packet_length"]  # Update forward bytes  
+
                 if packet["ttl"] is not None:
                     self.source_ttl = packet["ttl"]  # Store the source TTL for the first packet in the flow
+
+                if self.last_forward_packet_time is not None:
+                    diff = (now-self.last_forward_packet_time).total_seconds()*1000 #it is in milliseconds, as the interpacket time is usually measured in milliseconds
+                    self.forward_interpacket_times.append(diff)
+                self.last_forward_packet_time = now
+
            elif ((packet["src_ip"], packet["src_port"]) == (self.dst_ip, self.dst_port) 
                  and (packet["dst_ip"], packet["dst_port"]) == (self.src_ip, self.src_port)):
                  self.backward_packet_count += 1  
                  self.backward_bytes += packet["packet_length"]  # Update backward bytes
+
                  if packet["ttl"] is not None:
                     self.destination_ttl = packet["ttl"]  # Store the destination TTL for the first packet in the flow
+
+                 if self.last_backward_packet_time is not None:
+                    diff = (now-self.last_backward_packet_time).total_seconds()*1000 #it is in milliseconds, as the interpacket time is usually measured in milliseconds
+                    self.backward_interpacket_times.append(diff)
+                 self.last_backward_packet_time = now    
+                
 
     def is_expired(self,timeout=FLOW_TIMEOUT):
         #basic flow expiration check that determines if a flow has expired based on the time elapsed since the last seen packet. 
@@ -64,14 +122,14 @@ class networkFlowObject:
 
     @property
     def packet_rate(self):
-        if self.duration < 0.001:
+        if self.duration < MIN_FLOW_DURATION:
             return 0
         else:
             return self.total_packets / self.duration
 
     @property
     def byte_rate(self):
-        if self.duration <0.001:
+        if self.duration < MIN_FLOW_DURATION:
             return 0
         else:
             return self.total_bytes / self.duration
@@ -91,7 +149,94 @@ class networkFlowObject:
             return 0
         else:
             return self.backward_bytes / self.backward_packet_count
-        
+
+    @property
+    def source_interpacket_time_mean(self):
+        if len(self.forward_interpacket_times) == 0:
+            return 0
+        else:
+            return sum(self.forward_interpacket_times) / len(self.forward_interpacket_times)
+
+    @property
+    def destination_interpacket_time_mean(self):
+        if len(self.backward_interpacket_times) == 0:
+            return 0
+        else:
+            return sum(self.backward_interpacket_times) / len(self.backward_interpacket_times)
+
+    @property
+    def source_jitter(self):
+        if len(self.forward_interpacket_times) < 2:
+            return 0
+        else:
+            return statistics.stdev(self.forward_interpacket_times) 
+
+    @property
+    def destination_jitter(self):
+        if len(self.backward_interpacket_times) < 2:
+            return 0
+        else:
+            return statistics.stdev(self.backward_interpacket_times)
+    #this property was mde to accomondate all the services in the original dataset
+    @property
+    def service(self):
+        ports = {self.src_port, self.dst_port}
+        if 20 in ports:
+            return "ftp-data"
+        if 21 in ports:
+            return "ftp"
+        if 22 in ports:
+            return "ssh"
+        if 25 in ports:
+            return "smtp"
+        if 53 in ports:
+            return "dns"
+        if 67 in ports or 68 in ports:
+            return "dhcp"
+        if 80 in ports:
+            return "http"
+        if 110 in ports:
+            return "pop3"
+        if 161 in ports or 162 in ports:
+            if self.protocol == "udp":
+             return "snmp"
+        if 443 in ports and self.protocol=="tcp":# avoid udp as ssl
+            return "ssl"
+        if (1812 in ports or 1813 in ports) and self.protocol=="udp":
+            return "radius"
+        if 6667 in ports:
+            return "irc"
+        return "-" #bsically...none
+
+    @property
+    def state(self):
+        if self.protocol == "icmp":
+            if 8 in self.icmp_types:
+                return "ECO"
+            if 12 in self.icmp_types:
+                return "PAR"
+            if 3 in self.icmp_types and 0 in self.icmp_codes:
+                return "URN"
+            return "no"
+
+        if self.protocol == "tcp":
+            if self.tcp_rst_seen:
+                return "RST"
+            if self.tcp_fin_seen:
+                return "FIN"
+            if self.tcp_ack_seen:
+                return "CON"
+            if self.tcp_syn_seen:
+                return "REQ"
+            
+            return "INT"
+
+        if self.protocol == "udp":
+            return "INT"
+
+        return "no"
+
+    
 class networkFlowTracker:
     #basic network flow class that represents a network flow and its associated attributes.
     def __init__(self) :
