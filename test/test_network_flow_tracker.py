@@ -136,4 +136,28 @@ def test_different_protocols_same_ips_ports():
     flow = tracker.process_packet(packet2)
     assert len(tracker.flows) == 2
 
+def test_is_sm_ips_ports_is_true():
+    packet = create_test_packet(
+            src_ip="10.0.0.2",
+            dst_ip="10.0.0.2",
+            src_port=5000,
+            dst_port=5000,
+            protocol="tcp",
+            packet_length=100
+        )
+    flow = networkFlowObject(packet)
+    assert flow.is_sm_ips_ports==1
+
+def test_is_sm_ips_ports_is_false():
+    packet = create_test_packet(
+            src_ip="10.0.0.2",
+            dst_ip="10.0.0.1",
+            src_port=5000,
+            dst_port=5001,
+            protocol="tcp",
+            packet_length=100
+        )
+    flow = networkFlowObject(packet)
+    assert flow.is_sm_ips_ports==0
+
 

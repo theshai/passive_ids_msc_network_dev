@@ -40,7 +40,8 @@ def extract_unsw_from_flow(flow):
         "dtcpb": flow.dtcpb,
         "synack": flow.synack,
         "ackdat": flow.ackdat,
-        "tcprtt": flow.tcprtt
+        "tcprtt": flow.tcprtt,
+        "is_sm_ips_ports": flow.is_sm_ips_ports,
       
     }
  

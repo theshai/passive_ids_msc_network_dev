@@ -206,7 +206,7 @@ class networkFlowObject:
                         self.destination_loss += 1
                     else:
                         self.destination_tcp_sequences.add(packet_sig)
-                        
+
                     if seq in self.destination_tcp_sequences:
                         self.destination_loss += 1
                     else:
@@ -400,6 +400,17 @@ class networkFlowObject:
     @property
     def dloss(self):
         return self.destination_loss
+
+    @property
+    def is_sm_ips_ports(self):
+
+        if (
+            self.src_ip == self.dst_ip
+            and
+            self.src_port == self.dst_port
+        ):
+            return 1
+        return 0
    
 class networkFlowTracker:
     #basic network flow class that represents a network flow and its associated attributes.
