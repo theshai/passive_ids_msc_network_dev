@@ -58,6 +58,8 @@ class networkFlowObject:
         self.tcp_synack = 0
         self.tcp_ackdat = 0
 
+        self.response_body_len=0
+
         self.update(packet)
 
     def update(self, packet):
@@ -140,37 +142,39 @@ class networkFlowObject:
             if packet["ttl"] is not None:
                 self.source_ttl = packet["ttl"]
 
-            # TCP source window and base sequence
+            # TCP source-side tracking
             if self.protocol == "tcp":
 
-                
                 seq = packet.get("tcp_seq")
                 payload_len = packet.get("tcp_payload_len", 0)
 
-                # Only count packets carrying data
+                # Detect repeated TCP data packets
                 if seq is not None and payload_len > 0:
 
-                    packet_sig = (seq,payload_len) # a better signature
+                    packet_sig = (
+                        seq,
+                        payload_len
+                    )
+
                     if packet_sig in self.source_tcp_sequences:
-                                        self.source_loss += 1
-                    else:
-                        self.source_tcp_sequences.add(packet_sig)
-                    if seq in self.source_tcp_sequences:
                         self.source_loss += 1
                     else:
-                        self.source_tcp_sequences.add(seq)
-                
+                        self.source_tcp_sequences.add(packet_sig)
 
+                # Source TCP advertised window
                 if packet.get("tcp_window") is not None:
                     self.source_window = packet["tcp_window"]
 
+                # Source TCP base sequence number
                 if (
                     self.source_tcp_base_seq is None
                     and packet.get("tcp_seq") is not None
                 ):
                     self.source_tcp_base_seq = packet["tcp_seq"]
 
+            # Forward inter-packet timing
             if self.last_forward_packet_time is not None:
+
                 diff = (
                     now - self.last_forward_packet_time
                 ).total_seconds() * 1000
@@ -192,43 +196,51 @@ class networkFlowObject:
             if packet["ttl"] is not None:
                 self.destination_ttl = packet["ttl"]
 
-            # TCP destination window and base sequence
+            # TCP-specific backward-direction information
             if self.protocol == "tcp":
 
                 seq = packet.get("tcp_seq")
                 payload_len = packet.get("tcp_payload_len", 0)
 
-                # Only count packets carrying data
+                # Detect repeated TCP data packets
                 if seq is not None and payload_len > 0:
 
-                    packet_sig=(seq,payload_len)
+                    packet_sig = (
+                        seq,
+                        payload_len
+                    )
+
                     if packet_sig in self.destination_tcp_sequences:
                         self.destination_loss += 1
                     else:
                         self.destination_tcp_sequences.add(packet_sig)
 
-                    if seq in self.destination_tcp_sequences:
-                        self.destination_loss += 1
-                    else:
-                        self.destination_tcp_sequences.add(seq)
-
+                # Destination TCP advertised window
                 if packet.get("tcp_window") is not None:
                     self.destination_window = packet["tcp_window"]
 
+                # Destination TCP base sequence number
+                # Only store the first observed sequence number
                 if (
                     self.destination_tcp_base_seq is None
                     and packet.get("tcp_seq") is not None
                 ):
                     self.destination_tcp_base_seq = packet["tcp_seq"]
 
+                # Estimate plain HTTP response payload
+                if self.service == "http":
+                    self.response_body_len += payload_len
+
+            # Backward inter-packet timing
             if self.last_backward_packet_time is not None:
+
                 diff = (
                     now - self.last_backward_packet_time
                 ).total_seconds() * 1000
 
                 self.backward_interpacket_times.append(diff)
 
-            self.last_backward_packet_time = now   
+            self.last_backward_packet_time = now  
                 
 
     def is_expired(self,timeout=FLOW_TIMEOUT):
@@ -486,7 +498,7 @@ class networkFlowTracker:
             """
             #testing the extraction of flow data using the UNSW extractor
             extracted_data = unsw_extractor.extract_unsw_from_flow(flow)   
-            print("UNSW features:", extracted_data) 
+            print("UNSW features:", extracted_data["proto"]) 
             
                
                 

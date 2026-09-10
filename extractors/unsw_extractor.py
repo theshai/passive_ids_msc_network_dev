@@ -42,6 +42,7 @@ def extract_unsw_from_flow(flow):
         "ackdat": flow.ackdat,
         "tcprtt": flow.tcprtt,
         "is_sm_ips_ports": flow.is_sm_ips_ports,
+        "response_body_len": flow.response_body_len,
       
     }
  
