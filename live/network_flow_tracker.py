@@ -4,6 +4,8 @@ import threading
 import statistics
 from arrow import now
 from extractors import unsw_extractor
+import pandas as pd
+import requests
 
 FLOW_TIMEOUT = 30  # Timeout in seconds for flow expiration (random)
 MIN_FLOW_DURATION = 0.001  # Minimum duration in seconds to consider a flow for rate calculations
@@ -497,8 +499,11 @@ class networkFlowTracker:
             )  
             """
             #testing the extraction of flow data using the UNSW extractor
-            extracted_data = unsw_extractor.extract_unsw_from_flow(flow)   
-            print("UNSW features:", extracted_data["proto"]) 
+            extracted_data = unsw_extractor.extract_unsw_from_flow(flow)  
+            send_flow_to_ids(extracted_data)
+            #live_as_df=pd.DataFrame([extracted_data]) 
+            #print("UNSW features:", extracted_data) 
+            #print("UNSW as pd.dataframe:", live_as_df) 
             
                
                 
@@ -520,7 +525,30 @@ def generate_flow_key(packet):
     else:
         return (endpoint2, endpoint1, packet["protocol"])
     
-    
+#---------------------------------------------------------------
+#support function that send the flow line to the IDS system
+#--------------------------------------------------------------
+def send_flow_to_ids(features):
+
+    url = "http://localhost:8000/predict/unsw"
+
+    response = requests.post(
+        url,
+        json=features,
+        timeout=5
+    )
+
+    response.raise_for_status()
+
+    result = response.json()
+
+    print(
+        f"the feature{features}"
+        f"Prediction={result['label']} "
+        f"Probability={result['attack_probability']:.4f}"
+    )
+
+    return result
 
     
     

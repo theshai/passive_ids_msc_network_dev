@@ -22,6 +22,7 @@ def start_sniffing(interface=None):
     )
     """
     
+    
 def packet_collector(packet):
     #print("Packet captured:",packet_callback(packet))
     """""
