@@ -1,72 +1,82 @@
-from scapy.all import sniff, IP, TCP, UDP,ICMP,ARP
+from scapy.all import sniff, IP, TCP, UDP, ICMP, ARP, wrpcap
 from scapy.layers.inet6 import IPv6
 from datetime import datetime
 import live.network_flow_tracker as ft
 import socket
-from scapy.data import IP_PROTOS # for protocol translation
+from scapy.data import IP_PROTOS
 
-#one tracker for the entire program, to keep track of all flows across packets
+
+# One tracker for the entire program
 tracker = ft.networkFlowTracker()
 
+# Raw packets that will be saved to PCAP
+captured_packets = []
+
+
 def start_sniffing(interface=None):
+
     print("Starting packet sniffing...")
-    #sniff(iface=interface, prn=packet_collector, store=False)  
-    
-    #for testing purposes, we can use a filter to capture only ICMP packets to and from
-    """
-    sniff(
-        iface=interface,
-        filter="icmp and host 8.8.8.8",
-        prn=packet_collector,
-        store=False
-    )
-    """
-    
-    sniff(
-        iface=interface,
-        filter="host 208.65.102.229 and port 86",
-        prn=packet_collector,
-        store=False
-    )
-    
-        
-    
+
+    try:
+
+        sniff(
+            iface=interface,
+            filter="host 208.65.102.229 and port 86",
+            prn=packet_collector_test,
+            store=False
+        )
+
+    except KeyboardInterrupt:
+
+        print("\nStopping packet capture...")
+
+    finally:
+
+        print(
+            f"Saving {len(captured_packets)} packets..."
+        )
+
+        if captured_packets:
+
+            wrpcap(
+                "normal_test.pcap",
+                captured_packets
+            )
+
+            print(
+                "Saved normal_test.pcap"
+            )
+
+        else:
+
+            print(
+                "No packets were captured."
+            )
+
+
+def packet_collector_test(packet):
+
+    # Save the original raw Scapy packet
+    captured_packets.append(packet)
+
+    # Send the same packet through your existing code
+    packet_collector(packet)
+
+
 def packet_collector(packet):
-    #print("Packet captured:",packet_callback(packet))
 
-    packet_data = packet_callback(packet)  
+    packet_data = packet_callback(packet)
 
-    #getting rid of no data and no protocol packets, as they are not useful for flow tracking
-    if packet_data is None or packet_data["protocol"] is None:
+    # Ignore unusable packets
+    if (
+        packet_data is None
+        or packet_data["protocol"] is None
+    ):
         return
-    """
-    print(
-        "Captured:",
-        packet_data["src_ip"],
-        packet_data["src_port"],
-        "->",
-        packet_data["dst_ip"],
-        packet_data["dst_port"],
-        packet_data["protocol"]
-    )
-    """
 
-    
-    flow=tracker.process_packet(packet_data)
-    """"
-    no need for that, I only care about the expired flows, so I will remove the print statement for the flow details here.
-    print(
-    f"Forward packets={flow.forward_packet_count} "
-    f"Backward packets={flow.backward_packet_count} "
-    f"Total packets={flow.total_packets} "
-    f"Forward bytes={flow.forward_bytes} "
-    f"Backward bytes={flow.backward_bytes} "
-    f"Total bytes={flow.total_bytes} "
-    f"duration={flow.duration:.6f} "
-    f"Packet rate={flow.packet_rate:.2f} "
-    f"Byte rate={flow.byte_rate:.2f} "
-   )
-   """
+    flow = tracker.process_packet(
+        packet_data
+    )
 
 def packet_callback(packet):
 

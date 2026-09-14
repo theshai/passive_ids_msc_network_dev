@@ -10,6 +10,16 @@ import requests
 FLOW_TIMEOUT = 30  # Timeout in seconds for flow expiration (random)
 MIN_FLOW_DURATION = 0.001  # Minimum duration in seconds to consider a flow for rate calculations
 
+TCP_TIMEOUT = 120
+TCP_CLOSED_TIMEOUT = 2
+UDP_TIMEOUT = 30
+
+TCP_IDLE_TIMEOUT = 30
+TCP_ACTIVE_TIMEOUT = 300#60
+
+UDP_IDLE_TIMEOUT = 30
+UDP_ACTIVE_TIMEOUT = 60
+
 class networkFlowObject:
     #basic network flow class that represents a network flow and its associated attributes. 
     # It captures the start time, last seen time, protocol, source and destination IP addresses, 
@@ -244,12 +254,65 @@ class networkFlowObject:
 
             self.last_backward_packet_time = now  
                 
-
+    """"
     def is_expired(self,timeout=FLOW_TIMEOUT):
         #basic flow expiration check that determines if a flow has expired based on the time elapsed since the last seen packet. 
         # It compares the current time with the last seen time and checks if the difference exceeds the defined FLOW_TIMEOUT.
         return (datetime.now() - self.last_seen).total_seconds() >= timeout
+    """
+    def is_expired_dell(self):
 
+        idle_time = (
+            datetime.now() - self.last_seen
+        ).total_seconds()
+
+        if self.protocol == "tcp":
+
+            if self.tcp_fin_seen or self.tcp_rst_seen:
+                return idle_time >= TCP_CLOSED_TIMEOUT
+
+            return idle_time >= TCP_TIMEOUT
+
+        return idle_time >= UDP_TIMEOUT
+
+    def is_expired(self):
+
+        now = datetime.now()
+
+        # Time since the last packet was seen
+        idle_time = (
+            now - self.last_seen
+        ).total_seconds()
+
+        # Total lifetime of this flow
+        active_time = (
+            now - self.start_time
+        ).total_seconds()
+
+        # TCP
+        if self.protocol == "tcp":
+
+            # If FIN or RST was seen, allow a short grace period
+            # for the remaining TCP packets.
+            if self.tcp_fin_seen or self.tcp_rst_seen:
+                return idle_time >= TCP_CLOSED_TIMEOUT
+
+            # Force long-lived TCP connections to be split.
+            if active_time >= TCP_ACTIVE_TIMEOUT:
+                return True
+
+            # Otherwise expire after inactivity.
+            return idle_time >= TCP_IDLE_TIMEOUT
+
+        # UDP / ICMP / other protocols
+
+        # Force long-lived flows to be split.
+        if active_time >= UDP_ACTIVE_TIMEOUT:
+            return True
+
+        # Otherwise expire after inactivity.
+        return idle_time >= UDP_IDLE_TIMEOUT
+    
     #some basic properies to get the flow's attributes, such as the flow key, total packet count, total bytes, and duration of the flow.
     @property
     def duration(self):
@@ -500,7 +563,7 @@ class networkFlowTracker:
             """
             #testing the extraction of flow data using the UNSW extractor
             extracted_data = unsw_extractor.extract_unsw_from_flow(flow)  
-            send_flow_to_ids(extracted_data)
+            send_flow_to_ids(extracted_data,flow)
             #live_as_df=pd.DataFrame([extracted_data]) 
             #print("UNSW features:", extracted_data) 
             #print("UNSW as pd.dataframe:", live_as_df) 
@@ -528,7 +591,7 @@ def generate_flow_key(packet):
 #---------------------------------------------------------------
 #support function that send the flow line to the IDS system
 #--------------------------------------------------------------
-def send_flow_to_ids(features):
+def send_flow_to_ids(features,flow):
 
     url = "http://localhost:8000/predict/unsw"
 
@@ -543,7 +606,14 @@ def send_flow_to_ids(features):
     result = response.json()
 
     print(
-        f"the feature{features}"
+        f"\n\n"
+        f"FLOW: "
+        f"{flow.src_ip}:{flow.src_port} -> "
+        f"{flow.dst_ip}:{flow.dst_port}\n"
+        f"Duration={flow.duration:.6f} "
+        f"spkts={flow.forward_packet_count} "
+        f"dpkts={flow.backward_packet_count}\n"
+        f"Features={features}\n"
         f"Prediction={result['label']} "
         f"Probability={result['attack_probability']:.4f}"
     )

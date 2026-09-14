@@ -22,8 +22,8 @@ def extract_unsw_from_flow(flow):
         "sbytes": flow.forward_bytes,
         "dbytes": flow.backward_bytes,
         "rate": flow.packet_rate,
-        "sttl": flow.source_ttl if flow.source_ttl is not None else 0,  # Use 0 if source_ttl is None
-        "dttl": flow.destination_ttl if flow.destination_ttl is not None else 0,  # Use 0 if destination_ttl is None    
+        #"sttl": flow.source_ttl if flow.source_ttl is not None else 0,  # Use 0 if source_ttl is None
+        #"dttl": flow.destination_ttl if flow.destination_ttl is not None else 0,  # Use 0 if destination_ttl is None    
         "smean":flow.source_mean_packet_size,
         "dmean":flow.destination_mean_packet_size,
         "sinpkt":flow.source_interpacket_time_mean,
@@ -34,8 +34,8 @@ def extract_unsw_from_flow(flow):
         "dloss": flow.dloss,
         "sload": flow.forward_bytes*8 / flow.duration if flow.duration >= MIN_FLOW_DURATION else 0, #remove meaningless if duration is too small to avoid division by zero or unrealistic values
         "dload": flow.backward_bytes*8 / flow.duration if flow.duration >= MIN_FLOW_DURATION else 0,#remove meaningless if duration is too small to avoid division by zero or unrealistic values
-        "swin": flow.swin,
-        "dwin": flow.dwin,
+        #"swin": flow.swin,
+        #"dwin": flow.dwin,
         "stcpb": flow.stcpb,
         "dtcpb": flow.dtcpb,
         "synack": flow.synack,
