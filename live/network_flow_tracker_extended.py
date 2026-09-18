@@ -4,6 +4,7 @@ import threading
 import statistics
 from arrow import now
 from extractors import unsw_extractor
+from extractors import cic2017_extractor
 import pandas as pd
 import requests
 
@@ -51,26 +52,42 @@ class networkFlowObject:
         self.destination_window = None
         self.source_tcp_base_seq = None
         self.destination_tcp_base_seq = None
-        
         self.source_loss = 0
         self.destination_loss = 0
-        
         self.source_tcp_sequences = set()
         self.destination_tcp_sequences = set()
-
         self.icmp_types = set()
         self.icmp_codes = set()
-
-       
-
         self.tcp_syn_time = None
         self.tcp_synack_time = None
         self.tcp_ack_time = None
-
         self.tcp_synack = 0
         self.tcp_ackdat = 0
-
         self.response_body_len=0
+        #--------------------------------------------
+        #extentended to support cic_2017
+        #---------------------------------------------
+        self.forward_packet_lengths = []
+        self.backward_packet_lengths = []
+        self.all_packet_times = []
+        self.forward_packet_times = []
+        self.backward_packet_times = []
+        self.forward_psh_flags = 0
+        self.backward_psh_flags = 0
+        self.forward_urg_flags = 0
+        self.backward_urg_flags = 0
+        self.fin_flag_count = 0
+        self.rst_flag_count = 0
+        self.psh_flag_count = 0
+        self.ack_flag_count = 0
+        self.urg_flag_count = 0
+        self.forward_header_length = 0
+        self.backward_header_length = 0
+        self.initial_forward_window = None
+        self.initial_backward_window = None
+        #--------------------------------------------
+        #end of extended section
+        #---------------------------------------------
 
         self.update(packet)
 
@@ -78,10 +95,25 @@ class networkFlowObject:
         now = datetime.now()
         self.last_seen = now
 
+        # CIC-IDS2017: keep all packet arrival times for flow-level IAT calculations
+        self.all_packet_times.append(now)
+
         # Track TCP flags
         if self.protocol == "tcp" and packet.get("tcp_flags") is not None:
 
             flags = str(packet["tcp_flags"])
+
+            # CIC-IDS2017 TCP flag counters
+            if "F" in flags:
+                self.fin_flag_count += 1
+            if "R" in flags:
+                self.rst_flag_count += 1
+            if "P" in flags:
+                self.psh_flag_count += 1
+            if "A" in flags:
+                self.ack_flag_count += 1
+            if "U" in flags:
+                self.urg_flag_count += 1
 
             # SYN-ACK must be checked BEFORE plain SYN
             if "S" in flags and "A" in flags:
@@ -151,6 +183,18 @@ class networkFlowObject:
             self.forward_packet_count += 1
             self.forward_bytes += packet["packet_length"]
 
+            # CIC-IDS2017 forward-direction tracking
+            self.forward_packet_lengths.append(packet["packet_length"])
+            self.forward_packet_times.append(now)
+            self.forward_header_length += packet.get("transport_header_length", 0)
+
+            if self.protocol == "tcp":
+                cic_flags = str(packet.get("tcp_flags", ""))
+                if "P" in cic_flags:
+                    self.forward_psh_flags += 1
+                if "U" in cic_flags:
+                    self.forward_urg_flags += 1
+
             if packet["ttl"] is not None:
                 self.source_ttl = packet["ttl"]
 
@@ -176,6 +220,13 @@ class networkFlowObject:
                 # Source TCP advertised window
                 if packet.get("tcp_window") is not None:
                     self.source_window = packet["tcp_window"]
+
+                # CIC-IDS2017 initial forward TCP window
+                if (
+                    self.initial_forward_window is None
+                    and packet.get("tcp_window") is not None
+                ):
+                    self.initial_forward_window = packet["tcp_window"]
 
                 # Source TCP base sequence number
                 if (
@@ -205,6 +256,18 @@ class networkFlowObject:
             self.backward_packet_count += 1
             self.backward_bytes += packet["packet_length"]
 
+            # CIC-IDS2017 backward-direction tracking
+            self.backward_packet_lengths.append(packet["packet_length"])
+            self.backward_packet_times.append(now)
+            self.backward_header_length += packet.get("transport_header_length", 0)
+
+            if self.protocol == "tcp":
+                cic_flags = str(packet.get("tcp_flags", ""))
+                if "P" in cic_flags:
+                    self.backward_psh_flags += 1
+                if "U" in cic_flags:
+                    self.backward_urg_flags += 1
+
             if packet["ttl"] is not None:
                 self.destination_ttl = packet["ttl"]
 
@@ -230,6 +293,13 @@ class networkFlowObject:
                 # Destination TCP advertised window
                 if packet.get("tcp_window") is not None:
                     self.destination_window = packet["tcp_window"]
+
+                # CIC-IDS2017 initial backward TCP window
+                if (
+                    self.initial_backward_window is None
+                    and packet.get("tcp_window") is not None
+                ):
+                    self.initial_backward_window = packet["tcp_window"]
 
                 # Destination TCP base sequence number
                 # Only store the first observed sequence number
@@ -509,18 +579,25 @@ class networkFlowTracker:
             self.remove_expired_flows()
 
     def process_packet(self, packet):
-        #basic packet processing method that processes incoming packets and updates the corresponding flow in the tracker.
-        # It generates a flow key based on the packet's source and destination IP addresses, ports
-        # and protocol, and checks if the flow already exists in the tracker. If it does, it updates the flow with the new packet.
-        # If it doesn't exist, it creates a new flow object and adds it to the tracker. The method returns the flow object for the current packet.
+        """
+        Process an incoming packet and update/create its flow.
+
+        IMPORTANT:
+        The first packet that creates a flow must also be passed to update().
+        Otherwise the first packet is missing from all CIC counters.
+        """
+
         flow_key = generate_flow_key(packet)
 
         with self.flows_lock:
-            if flow_key in self.flows:
-                self.flows[flow_key].update(packet)
-            else:
+
+            if flow_key not in self.flows:
                 self.flows[flow_key] = networkFlowObject(packet)
-            #always return the flow object for the current packet, regardless of whether it was updated or newly created
+
+            # ALWAYS process the packet, including the packet
+            # that created the flow.
+            self.flows[flow_key].update(packet)
+
             return self.flows[flow_key]
     
     #adding removed flows based on expiration check. This method iterates through the flows and removes any expired flows from the tracker.
@@ -562,11 +639,23 @@ class networkFlowTracker:
             )  
             """
             #testing the extraction of flow data using the UNSW extractor
-            extracted_data = unsw_extractor.extract_unsw_from_flow(flow)  
-            send_flow_to_ids(extracted_data,flow)
+            ######  extracted_data = unsw_extractor.extract_unsw_from_flow(flow)  
+            ####### send_flow_to_ids(extracted_data,flow)
+            #extracted_data = cic2017_extractor.extract_cic2017_from_flow(flow) 
+            #print("CIC as pd.dataframe:", extracted_data) 
             #live_as_df=pd.DataFrame([extracted_data]) 
             #print("UNSW features:", extracted_data) 
             #print("UNSW as pd.dataframe:", live_as_df) 
+            print(
+                f"\nCIC FLOW: "
+                f"{flow.src_ip}:{flow.src_port} -> "
+                f"{flow.dst_ip}:{flow.dst_port}"
+            )
+
+            features = cic2017_extractor.extract_cic2017_from_flow(flow) 
+
+            print("CIC Features:")
+            print(features)
             
                
                 
@@ -667,7 +756,5 @@ def send_flow_to_ids(extracted_data, flow):
         print(
             "Unexpected IDS error:",
             e
-        )    
-    
-
-         
+        )   
+ 
