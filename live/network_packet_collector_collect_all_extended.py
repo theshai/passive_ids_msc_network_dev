@@ -86,26 +86,26 @@ def packet_callback(packet):
 
     #basic packet data extraction and printing to console. It captures the timestamp, source and destination IP addresses, protocol, source and destination ports, packet length, and TCP flags if applicable.
     packet_data = {
-        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "src_ip": packet[IP].src if IP in packet else None,
-        "dst_ip": packet[IP].dst if IP in packet else None,
-        "protocol": "unas",#packet[IP].proto if IP in packet else None,
-        "src_port": packet[TCP].sport if TCP in packet else (packet[UDP].sport if UDP in packet else None),
-        "dst_port": packet[TCP].dport if TCP in packet else (packet[UDP].dport if UDP in packet else None),
-        "packet_length": len(packet),
-        "tcp_flags": packet[TCP].flags if TCP in packet else None,
-        "ttl": packet[IP].ttl if IP in packet else None, # also hop limit for IPv6 packets
-        "icmp_type":None,
-        "icmp_code": None,
-        "tcp_window":None,
-        "tcp_seq":None,
-        "tcp_ack":None,
-        "tcp_payload_len": 0,
-
-        # CIC-IDS2017 ADDED
-        "ip_header_length": 0,
-        "transport_header_length": 0,
-    }
+                "timestamp": float(packet.time),
+                "src_ip": packet[IP].src if IP in packet else None,
+                "dst_ip": packet[IP].dst if IP in packet else None,
+                "protocol": "unas",
+                "src_port": packet[TCP].sport if TCP in packet
+                            else (packet[UDP].sport if UDP in packet else None),
+                "dst_port": packet[TCP].dport if TCP in packet
+                            else (packet[UDP].dport if UDP in packet else None),
+                "packet_length": len(packet),
+                "tcp_flags": packet[TCP].flags if TCP in packet else None,
+                "ttl": packet[IP].ttl if IP in packet else None,
+                "icmp_type": None,
+                "icmp_code": None,
+                "tcp_window": None,
+                "tcp_seq": None,
+                "tcp_ack": None,
+                "tcp_payload_len": 0,
+                # CICFlowMeter-compatible bulk tracking
+                "payload_size": 0,
+            }
 
 #basic network collector that captures packets and prints their details to the console. It uses the Scapy library to sniff network traffic and extract relevant information from IP, TCP, and UDP packets.
 
@@ -141,6 +141,7 @@ def packet_callback(packet):
             packet_data["tcp_seq"] = packet[TCP].seq
             packet_data["tcp_ack"] = packet[TCP].ack
             packet_data["tcp_payload_len"] = len(bytes(packet[TCP].payload))
+            packet_data["payload_size"] = len(bytes(packet[TCP].payload))
 
             # CIC-IDS2017 ADDED
             # TCP dataofs is the number of 32-bit words.
@@ -157,7 +158,7 @@ def packet_callback(packet):
             # CIC-IDS2017 ADDED
             # UDP header is always 8 bytes.
             packet_data["transport_header_length"] = 8
-
+            packet_data["payload_size"] = len(bytes(packet[UDP].payload))
             #packet_data["protocol"] = "udp"
 
         elif ICMP in packet:

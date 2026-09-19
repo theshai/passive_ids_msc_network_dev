@@ -27,13 +27,37 @@ class networkFlowObject:
     # source and destination ports, and packet counts for both forward and backward directions. 
     # The update method is used to update the flow's attributes based on new packets.
     def __init__(self,packet):
-        self.start_time = datetime.now()
-        self.last_seen = datetime.now()
+        packet_time = datetime.fromtimestamp(packet["timestamp"])
+        self.start_time = packet_time# datetime.now()
+        self.last_seen = packet_time# datetime.now()
+
+        packet_timestamp = float(packet["timestamp"])
+
+        # CIC Active / Idle tracking
+        self.cic_start_active = packet_timestamp
+        self.cic_last_active = packet_timestamp
+
+        self.cic_active = []
+        self.cic_idle = []
+
         self.protocol = packet["protocol"]
         self.src_ip = packet["src_ip"]  
         self.dst_ip = packet["dst_ip"]
         self.src_port = packet["src_port"]  
         self.dst_port = packet["dst_port"]
+        #--------------------------------------------
+        #Test for directional flow
+        #--------------------------------------------
+        """"
+        print(
+            f"\n[NEW FLOW] "
+            f"{self.src_ip}:{self.src_port} -> "
+            f"{self.dst_ip}:{self.dst_port} "
+            f"flags={packet.get('tcp_flags')}"
+        )
+        """
+
+
         self.forward_packet_count = 0
         self.backward_packet_count = 0
         self.forward_bytes = 0
@@ -85,17 +109,97 @@ class networkFlowObject:
         self.backward_header_length = 0
         self.initial_forward_window = None
         self.initial_backward_window = None
+        # CIC-IDS2017 minimum forward segment/header size
+        self.min_forward_segment_size = None
+        # Forward bulk temporary state
+        self.forward_bulk_start_tmp = 0
+        self.forward_bulk_last_timestamp = 0
+        self.forward_bulk_count_tmp = 0
+        self.forward_bulk_size_tmp = 0
+
+        # Forward confirmed bulk statistics
+        self.forward_bulk_count = 0
+        self.forward_bulk_packet_count = 0
+        self.forward_bulk_size = 0
+        self.forward_bulk_duration = 0
+
+        # Backward bulk temporary state
+        self.backward_bulk_start_tmp = 0
+        self.backward_bulk_last_timestamp = 0
+        self.backward_bulk_count_tmp = 0
+        self.backward_bulk_size_tmp = 0
+
+        # Backward confirmed bulk statistics
+        self.backward_bulk_count = 0
+        self.backward_bulk_packet_count = 0
+        self.backward_bulk_size = 0
+        self.backward_bulk_duration = 0
+
+        # Same values used by CICFlowMeter
+        self.bulk_timeout = 1.0
+        self.bulk_bound = 4
         #--------------------------------------------
         #end of extended section
         #---------------------------------------------
 
-        self.update(packet)
+        ######self.update(packet)
 
     def update(self, packet):
-        now = datetime.now()
+
+        
+        #--------------------------------------------
+        #Test for directional flow
+        #--------------------------------------------
+        """"
+        is_forward = (
+            packet["src_ip"] == self.src_ip
+            and packet["dst_ip"] == self.dst_ip
+            and packet["src_port"] == self.src_port
+            and packet["dst_port"] == self.dst_port
+        )
+
+        if is_forward:
+            direction = "forward"
+        else:
+            direction = "backward"
+
+        print(
+            f"[{direction.upper()}] "
+            f"{packet['src_ip']}:{packet['src_port']} -> "
+            f"{packet['dst_ip']}:{packet['dst_port']} "
+            f"flags={packet.get('tcp_flags')}"
+        )
+
+        """
+
+        packet_timestamp = float(packet["timestamp"])
+        now = datetime.fromtimestamp(packet_timestamp)
+
+        # ---------------------------------------------------------
+        # CIC Active / Idle tracking
+        # ---------------------------------------------------------
+        previous_timestamp = self.last_seen.timestamp()
+
+        gap = packet_timestamp - previous_timestamp
+
+        # CIC active timeout = 5 seconds (from cicflowmeter)
+        if gap > 5.0:
+
+            active_duration = previous_timestamp - self.cic_start_active
+
+            if active_duration > 0:
+                self.cic_active.append(active_duration)
+
+            self.cic_idle.append(gap)
+
+            # Current packet starts a new active period
+            self.cic_start_active = packet_timestamp
+
+        self.cic_last_active = packet_timestamp
+
+        # NOW update last_seen
         self.last_seen = now
 
-        # CIC-IDS2017: keep all packet arrival times for flow-level IAT calculations
         self.all_packet_times.append(now)
 
         # Track TCP flags
@@ -182,11 +286,27 @@ class networkFlowObject:
 
             self.forward_packet_count += 1
             self.forward_bytes += packet["packet_length"]
+            # CICFlowMeter bulk tracking
+            self.update_bulk(packet, "forward")
 
             # CIC-IDS2017 forward-direction tracking
             self.forward_packet_lengths.append(packet["packet_length"])
             self.forward_packet_times.append(now)
-            self.forward_header_length += packet.get("transport_header_length", 0)
+            #self.forward_header_length += packet.get("transport_header_length", 0)
+            if self.protocol == "tcp":
+                self.forward_header_length += 20
+            else:
+                self.forward_header_length += packet.get(
+                    "transport_header_length", 0
+    )
+            # CIC-IDS2017 min_seg_size_forward
+            if self.protocol == "tcp":
+                segment_size = 20
+                if (
+                    self.min_forward_segment_size is None
+                    or segment_size < self.min_forward_segment_size
+                  ):
+                    self.min_forward_segment_size = segment_size
 
             if self.protocol == "tcp":
                 cic_flags = str(packet.get("tcp_flags", ""))
@@ -255,11 +375,19 @@ class networkFlowObject:
 
             self.backward_packet_count += 1
             self.backward_bytes += packet["packet_length"]
-
+            # CICFlowMeter bulk tracking
+            self.update_bulk(packet, "backward")
+            
             # CIC-IDS2017 backward-direction tracking
             self.backward_packet_lengths.append(packet["packet_length"])
             self.backward_packet_times.append(now)
-            self.backward_header_length += packet.get("transport_header_length", 0)
+            #self.backward_header_length += packet.get("transport_header_length", 0)
+            if self.protocol == "tcp":
+                self.backward_header_length += 20
+            else:
+                self.backward_header_length += packet.get(
+                    "transport_header_length", 0
+    )
 
             if self.protocol == "tcp":
                 cic_flags = str(packet.get("tcp_flags", ""))
@@ -323,7 +451,161 @@ class networkFlowObject:
                 self.backward_interpacket_times.append(diff)
 
             self.last_backward_packet_time = now  
-                
+
+    def update_bulk(self, packet, direction):
+        """
+        CICFlowMeter-compatible bulk tracking.
+
+        direction:
+            "forward"
+            "backward"
+        """
+
+        payload_size = packet.get("payload_size", 0)
+
+        if payload_size is None:
+            payload_size = 0
+
+        # CICFlowMeter ignores packets without payload
+        if payload_size == 0:
+            return
+
+        packet_time = float(packet["timestamp"])
+
+        #-----------------------------------------------------------
+        # FORWARD
+        #-----------------------------------------------------------
+        if direction == "forward":
+
+            # Backward payload appeared after this potential forward
+            # bulk started -> reset temporary forward bulk.
+            if self.backward_bulk_last_timestamp > self.forward_bulk_start_tmp:
+                self.forward_bulk_start_tmp = 0
+
+            # Start a new potential bulk
+            if self.forward_bulk_start_tmp == 0:
+
+                self.forward_bulk_start_tmp = packet_time
+                self.forward_bulk_last_timestamp = packet_time
+                self.forward_bulk_count_tmp = 1
+                self.forward_bulk_size_tmp = payload_size
+
+            else:
+
+                # More than 1 second since previous payload packet:
+                # start a new potential bulk
+                if (
+                    packet_time - self.forward_bulk_last_timestamp
+                    > self.bulk_timeout
+                ):
+
+                    self.forward_bulk_start_tmp = packet_time
+                    self.forward_bulk_last_timestamp = packet_time
+                    self.forward_bulk_count_tmp = 1
+                    self.forward_bulk_size_tmp = payload_size
+
+                else:
+
+                    self.forward_bulk_count_tmp += 1
+                    self.forward_bulk_size_tmp += payload_size
+
+                    # Exactly 4 payload packets -> bulk becomes valid
+                    if self.forward_bulk_count_tmp == self.bulk_bound:
+
+                        self.forward_bulk_count += 1
+
+                        self.forward_bulk_packet_count += (
+                            self.forward_bulk_count_tmp
+                        )
+
+                        self.forward_bulk_size += (
+                            self.forward_bulk_size_tmp
+                        )
+
+                        self.forward_bulk_duration += (
+                            packet_time -
+                            self.forward_bulk_start_tmp
+                        )
+
+                    # Bulk already established
+                    elif self.forward_bulk_count_tmp > self.bulk_bound:
+
+                        self.forward_bulk_packet_count += 1
+                        self.forward_bulk_size += payload_size
+
+                        self.forward_bulk_duration += (
+                            packet_time -
+                            self.forward_bulk_last_timestamp
+                        )
+
+                    self.forward_bulk_last_timestamp = packet_time
+
+        #-----------------------------------------------------------
+        # BACKWARD
+        #-----------------------------------------------------------
+        else:
+
+            # Forward payload appeared after this potential backward
+            # bulk started -> reset temporary backward bulk.
+            if self.forward_bulk_last_timestamp > self.backward_bulk_start_tmp:
+                self.backward_bulk_start_tmp = 0
+
+            # Start a new potential bulk
+            if self.backward_bulk_start_tmp == 0:
+
+                self.backward_bulk_start_tmp = packet_time
+                self.backward_bulk_last_timestamp = packet_time
+                self.backward_bulk_count_tmp = 1
+                self.backward_bulk_size_tmp = payload_size
+
+            else:
+
+                # More than 1 second since previous payload packet
+                if (
+                    packet_time - self.backward_bulk_last_timestamp
+                    > self.bulk_timeout
+                ):
+
+                    self.backward_bulk_start_tmp = packet_time
+                    self.backward_bulk_last_timestamp = packet_time
+                    self.backward_bulk_count_tmp = 1
+                    self.backward_bulk_size_tmp = payload_size
+
+                else:
+
+                    self.backward_bulk_count_tmp += 1
+                    self.backward_bulk_size_tmp += payload_size
+
+                    # Exactly 4 payload packets -> bulk becomes valid
+                    if self.backward_bulk_count_tmp == self.bulk_bound:
+
+                        self.backward_bulk_count += 1
+
+                        self.backward_bulk_packet_count += (
+                            self.backward_bulk_count_tmp
+                        )
+
+                        self.backward_bulk_size += (
+                            self.backward_bulk_size_tmp
+                        )
+
+                        self.backward_bulk_duration += (
+                            packet_time -
+                            self.backward_bulk_start_tmp
+                        )
+
+                    # Bulk already established
+                    elif self.backward_bulk_count_tmp > self.bulk_bound:
+
+                        self.backward_bulk_packet_count += 1
+                        self.backward_bulk_size += payload_size
+
+                        self.backward_bulk_duration += (
+                            packet_time -
+                            self.backward_bulk_last_timestamp
+                        )
+
+                    self.backward_bulk_last_timestamp = packet_time                
     """"
     def is_expired(self,timeout=FLOW_TIMEOUT):
         #basic flow expiration check that determines if a flow has expired based on the time elapsed since the last seen packet. 
@@ -578,7 +860,7 @@ class networkFlowTracker:
             time.sleep(1)
             self.remove_expired_flows()
 
-    def process_packet(self, packet):
+    def process_packet_(self, packet):
         """
         Process an incoming packet and update/create its flow.
 
@@ -596,6 +878,19 @@ class networkFlowTracker:
 
             # ALWAYS process the packet, including the packet
             # that created the flow.
+            self.flows[flow_key].update(packet)
+
+            return self.flows[flow_key]
+
+    def process_packet(self, packet):
+
+        flow_key = generate_flow_key(packet)
+
+        with self.flows_lock:
+
+            if flow_key not in self.flows:
+             self.flows[flow_key] = networkFlowObject(packet)
+
             self.flows[flow_key].update(packet)
 
             return self.flows[flow_key]

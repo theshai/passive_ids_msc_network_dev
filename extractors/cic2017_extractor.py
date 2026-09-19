@@ -1,4 +1,3 @@
-import statistics
 import numpy as np
 
 
@@ -230,6 +229,92 @@ def extract_cic2017_from_flow(flow):
         else 0
     )
 
+    min_seg_size_forward = (
+        flow.min_forward_segment_size
+        if flow.min_forward_segment_size is not None
+        else 0
+    )
+
+    # Forward average bytes per bulk
+    if flow.forward_bulk_count > 0:
+        fwd_avg_bytes_bulk = (
+            flow.forward_bulk_size /
+            flow.forward_bulk_count
+        )
+
+        fwd_avg_packets_bulk = (
+            flow.forward_bulk_packet_count /
+            flow.forward_bulk_count
+        )
+    else:
+        fwd_avg_bytes_bulk = 0
+        fwd_avg_packets_bulk = 0
+
+
+    # Forward average bulk rate
+    if flow.forward_bulk_duration > 0:
+        fwd_avg_bulk_rate = (
+            flow.forward_bulk_size /
+            flow.forward_bulk_duration
+        )
+    else:
+        fwd_avg_bulk_rate = 0
+
+
+    # Backward average bytes per bulk
+    if flow.backward_bulk_count > 0:
+        bwd_avg_bytes_bulk = (
+            flow.backward_bulk_size /
+            flow.backward_bulk_count
+        )
+
+        bwd_avg_packets_bulk = (
+            flow.backward_bulk_packet_count /
+            flow.backward_bulk_count
+        )
+    else:
+        bwd_avg_bytes_bulk = 0
+        bwd_avg_packets_bulk = 0
+
+
+    # Backward average bulk rate
+    if flow.backward_bulk_duration > 0:
+        bwd_avg_bulk_rate = (
+            flow.backward_bulk_size /
+            flow.backward_bulk_duration
+        )
+    else:
+        bwd_avg_bulk_rate = 0
+
+    # ---------------------------------------------------------
+    # CIC Active / Idle features
+    # ---------------------------------------------------------
+
+    if len(flow.cic_active) > 1:
+        active_mean = float(np.mean(flow.cic_active))
+        active_std = float(np.sqrt(np.var(flow.cic_active)))
+        active_max = float(max(flow.cic_active))
+    else:
+        active_mean = 0
+        active_std = 0
+        active_max = 0
+
+
+    if len(flow.cic_idle) > 1:
+        idle_std = float(np.sqrt(np.var(flow.cic_idle)))
+    else:
+        idle_std = 0  
+
+    # ---------------------------------------------------------
+    # CIC Active / Idle values are stored in seconds.
+    # CIC-IDS2017 timing features use microseconds.
+    # ---------------------------------------------------------
+
+    active_mean *= 1_000_000
+    active_std *= 1_000_000
+    active_max *= 1_000_000
+    idle_std *= 1_000_000 
+
 
     #-----------------------------------------------------------
     # BUILD CIC-IDS2017 FEATURE DICTIONARY
@@ -319,6 +404,9 @@ def extract_cic2017_from_flow(flow):
         "Bwd Packets/s":
             bwd_packets_per_second,
 
+        "min_seg_size_forward":
+            min_seg_size_forward,
+
         "Min Packet Length":
             min_packet_length,
 
@@ -345,6 +433,30 @@ def extract_cic2017_from_flow(flow):
 
         "Init_Win_bytes_backward":
             init_win_backward,
+
+        "Fwd Avg Bytes/Bulk":
+            fwd_avg_bytes_bulk,
+
+        "Fwd Avg Packets/Bulk":
+            fwd_avg_packets_bulk,
+
+        "Fwd Avg Bulk Rate":
+            fwd_avg_bulk_rate,
+
+        "Bwd Avg Bytes/Bulk":
+            bwd_avg_bytes_bulk,
+
+        "Bwd Avg Packets/Bulk":
+            bwd_avg_packets_bulk,
+
+        "Bwd Avg Bulk Rate":
+            bwd_avg_bulk_rate,
+
+        "Active Mean": active_mean,
+        "Active Std": active_std,
+        "Active Max": active_max,
+        "Idle Std": idle_std,
+       
     }
 
     return features
