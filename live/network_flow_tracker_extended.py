@@ -935,22 +935,26 @@ class networkFlowTracker:
             """
             #testing the extraction of flow data using the UNSW extractor
             ######  extracted_data = unsw_extractor.extract_unsw_from_flow(flow)  
-            ####### send_flow_to_ids(extracted_data,flow)
+            #send_flow_to_ids(extracted_data,flow)
             #extracted_data = cic2017_extractor.extract_cic2017_from_flow(flow) 
             #print("CIC as pd.dataframe:", extracted_data) 
             #live_as_df=pd.DataFrame([extracted_data]) 
             #print("UNSW features:", extracted_data) 
             #print("UNSW as pd.dataframe:", live_as_df) 
+            """"
             print(
                 f"\nCIC FLOW: "
                 f"{flow.src_ip}:{flow.src_port} -> "
                 f"{flow.dst_ip}:{flow.dst_port}"
             )
+            """
 
             features = cic2017_extractor.extract_cic2017_from_flow(flow) 
 
-            print("CIC Features:")
-            print(features)
+            #print("CIC Features:")
+            #print(features)
+
+            send_flow_to_ids(features,flow, dataset="cic2017")
             
                
                 
@@ -1004,7 +1008,7 @@ def send_flow_to_ids_old(features,flow):
 
     return result
 
-def send_flow_to_ids(extracted_data, flow):
+def send_flow_to_ids_unsw_only(extracted_data, flow):
 
     try:
 
@@ -1052,4 +1056,174 @@ def send_flow_to_ids(extracted_data, flow):
             "Unexpected IDS error:",
             e
         )   
- 
+
+def send_flow_to_ids_working_no_meta_data(extracted_data, flow, dataset="unsw"):
+
+    try:
+
+        # Select IDS endpoint based on dataset
+        if dataset == "unsw":
+            url = "http://localhost:8000/predict/unsw"
+
+        elif dataset == "cic2017":
+            url = "http://localhost:8000/predict/cic2017"
+
+        else:
+            print(
+                f"Unsupported IDS dataset: {dataset} - please select only trained dataset"
+            )
+            return
+
+        response = requests.post(
+            url,
+            json=extracted_data,
+            timeout=30
+        )
+
+        if response.status_code != 200:
+            print(
+                f"IDS ERROR {response.status_code}: "
+                f"{response.text}"
+            )
+            return
+
+        result = response.json()
+
+        print(
+            f"\nIDS Prediction [{dataset}]:",
+            result
+        )
+
+        return result
+
+    except requests.exceptions.Timeout:
+
+        print("IDS request timed out")
+
+    except requests.exceptions.ConnectionError as e:
+
+        print(
+            "Cannot connect to IDS server:",
+            e
+        )
+
+    except requests.exceptions.RequestException as e:
+
+        print(
+            "IDS request failed:",
+            e
+        )
+
+    except Exception as e:
+
+        print(
+            "Unexpected IDS error:",
+            e
+        )
+
+def send_flow_to_ids(extracted_data, flow, dataset="unsw"):
+
+    try:
+
+        # --------------------------------------------------
+        # Select endpoint
+        # --------------------------------------------------
+
+        if dataset == "unsw":
+            url = "http://localhost:8000/predict/unsw"
+
+        elif dataset == "cic2017":
+            url = "http://localhost:8000/predict/cic2017"
+
+        else:
+            print(
+                f"Unsupported IDS dataset: {dataset}"
+            )
+            return
+
+
+        # --------------------------------------------------
+        # Metadata - NOT used by the ML model
+        # --------------------------------------------------
+
+        metadata = {
+            "src_ip": flow.src_ip,
+            "src_port": flow.src_port,
+
+            "dst_ip": flow.dst_ip,
+            "dst_port": flow.dst_port,
+
+            "protocol": flow.protocol,
+
+            "packets":
+                flow.forward_packet_count +
+                flow.backward_packet_count,
+
+            "bytes":
+                flow.forward_bytes +
+                flow.backward_bytes
+        }
+
+
+        # --------------------------------------------------
+        # Request payload
+        # --------------------------------------------------
+
+        payload = {
+            "features": extracted_data,
+            "metadata": metadata
+        }
+
+
+        response = requests.post(
+            url,
+            json=payload,
+            timeout=30
+        )
+
+
+        if response.status_code != 200:
+            print(
+                f"IDS ERROR {response.status_code}: "
+                f"{response.text}"
+            )
+            return
+
+
+        result = response.json()
+
+        print(
+            f"\nIDS Prediction [{dataset}]:",
+            result
+        )
+
+        return result
+
+
+    except requests.exceptions.Timeout:
+
+        print("IDS request timed out")
+
+
+    except requests.exceptions.ConnectionError as e:
+
+        print(
+            "Cannot connect to IDS server:",
+            e
+        )
+
+
+    except requests.exceptions.RequestException as e:
+
+        print(
+            "IDS request failed:",
+            e
+        )
+
+
+    except Exception as e:
+
+        print(
+            "Unexpected IDS error:",
+            e
+        )    
