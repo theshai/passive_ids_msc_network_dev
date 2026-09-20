@@ -356,7 +356,7 @@ def extract_cic2017_from_flow(flow):
         "Flow Bytes/s":
             flow_bytes_per_second,
 
-        "FlowPackets/s":
+        "Flow Packets/s":
             flow_packets_per_second,
 
         "Flow IAT Mean":
