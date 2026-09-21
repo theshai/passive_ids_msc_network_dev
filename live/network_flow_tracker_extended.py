@@ -21,6 +21,22 @@ TCP_ACTIVE_TIMEOUT = 300#60
 UDP_IDLE_TIMEOUT = 30
 UDP_ACTIVE_TIMEOUT = 60
 
+#------------------------------------------------------------
+#Information needed to be updated from IDS selection
+#------------------------------------------------------------
+
+#needs to be dynamic
+IDS_CONFIG_URL="http://localhost:8000/capture/config"
+
+ids_config={
+    "running": True,
+    "dataset": "cic2017",
+    "model": "random_forest",
+    "protocol": "all"
+    }
+
+ids_config_lock = threading.Lock()
+
 class networkFlowObject:
     #basic network flow class that represents a network flow and its associated attributes. 
     # It captures the start time, last seen time, protocol, source and destination IP addresses, 
@@ -853,6 +869,14 @@ class networkFlowTracker:
         self.cleanup_thread = threading.Thread(target=self.cleanup_loop, daemon=True)
         self.cleanup_thread.start()
 
+        #added for the config read options
+        self.config_thread = threading.Thread(
+        target=update_ids_config,
+        daemon=True
+         )
+
+        self.config_thread.start()
+
     def cleanup_loop(self):
         #basic flow expiration loop that runs in a separate thread and periodically checks for expired flows. 
         # It calls the remove_expired_flows method to remove any flows that have exceeded the defined FLOW_TIMEOUT.
@@ -949,15 +973,136 @@ class networkFlowTracker:
             )
             """
 
-            features = cic2017_extractor.extract_cic2017_from_flow(flow) 
+            ###########features = cic2017_extractor.extract_cic2017_from_flow(flow) 
 
             #print("CIC Features:")
             #print(features)
 
-            send_flow_to_ids(features,flow, dataset="cic2017")
+            ##########send_flow_to_ids(features,flow, dataset="cic2017")
             #send_flow_to_ids(features,flow)
-               
-                
+            # Read current dashboard configuration
+            
+          
+
+            with ids_config_lock:
+                config = ids_config.copy()
+
+            print("what is the status of the dashboard:",config)
+
+            # Dashboard has capture stopped
+            if not config.get("running", False):
+                continue
+
+            # Protocol filtering
+            selected_protocol = config.get(
+                "protocol",
+                "all"
+            ).lower()
+
+            flow_protocol = str(
+                flow.protocol
+            ).lower()
+
+            if (
+                selected_protocol != "all"
+                and flow_protocol != selected_protocol
+            ):
+                continue
+
+            # Dataset selection
+
+            dataset = config.get(
+                "dataset",
+                "unsw"
+            ).lower()
+
+            if dataset == "cic2017":
+
+                features = (
+                    cic2017_extractor
+                    .extract_cic2017_from_flow(flow)
+                )
+
+                send_flow_to_ids(
+                    features,
+                    flow,
+                    dataset="cic2017"
+                )
+
+            elif dataset == "unsw":
+
+                features = (
+                    unsw_extractor
+                    .extract_unsw_from_flow(flow)
+                )
+
+                send_flow_to_ids(
+                    features,
+                    flow,
+                    dataset="unsw"
+                )
+
+            else:
+
+                print(
+                    "Unsupported dataset selected:",
+                    dataset
+                )
+
+
+# Allows the sensor to change configuration when change happens on the dashboard               
+def update_ids_config():
+    """
+    Periodically retrieve the capture configuration from FastAPI.
+
+    The Network Agent continues running even when capture is stopped.
+    The dashboard controls whether flows are sent to the IDS.
+    """
+
+    global ids_config
+
+    while True:
+
+        try:
+
+            response = requests.get(
+                IDS_CONFIG_URL,
+                timeout=2
+            )
+
+            if response.status_code == 200:
+
+                new_config = response.json()
+
+                with ids_config_lock:
+
+                    # Print only when something actually changed
+                    if new_config != ids_config:
+
+                        print(
+                            "\nIDS configuration changed:",
+                            new_config
+                        )
+
+                    ids_config = new_config
+
+        except requests.exceptions.ConnectionError:
+
+            # FastAPI may temporarily be unavailable.
+            # Keep the Network Agent alive.
+            pass
+
+        except requests.exceptions.Timeout:
+            pass
+
+        except Exception as e:
+
+            print(
+                "Unable to retrieve IDS configuration:",
+                e
+            )
+
+        time.sleep(1)                
              
 
         
@@ -1171,11 +1316,14 @@ def send_flow_to_ids(extracted_data, flow, dataset="unsw"):
         # --------------------------------------------------
         # Request payload
         # --------------------------------------------------
-
-        payload = {
-            "features": extracted_data,
-            "metadata": metadata
-        }
+        
+        if dataset=="cic2017":
+            payload = {
+                "features": extracted_data,
+                "metadata": metadata
+            }
+        else:
+            payload=extracted_data
 
 
         response = requests.post(
