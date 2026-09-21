@@ -955,7 +955,7 @@ class networkFlowTracker:
             #print(features)
 
             send_flow_to_ids(features,flow, dataset="cic2017")
-            
+            #send_flow_to_ids(features,flow)
                
                 
              
@@ -1154,6 +1154,9 @@ def send_flow_to_ids(extracted_data, flow, dataset="unsw"):
             "dst_port": flow.dst_port,
 
             "protocol": flow.protocol,
+            #not included in the 46 features, added anyway for dashboard
+            "service":getattr(flow,"service",""),
+            "state":getattr(flow,"state",""),
 
             "packets":
                 flow.forward_packet_count +
