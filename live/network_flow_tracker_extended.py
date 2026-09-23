@@ -987,7 +987,6 @@ class networkFlowTracker:
             with ids_config_lock:
                 config = ids_config.copy()
 
-            print("what is the status of the dashboard:",config)
 
             # Dashboard has capture stopped
             if not config.get("running", False):
@@ -1018,10 +1017,15 @@ class networkFlowTracker:
 
             if dataset == "cic2017":
 
+                print("\n*** CIC FLOW EXPIRED - PROCESSING ***")
+                print("Selected model:", config.get("model"))
+
                 features = (
                     cic2017_extractor
                     .extract_cic2017_from_flow(flow)
                 )
+
+                print("CIC features extracted:", len(features))
 
                 send_flow_to_ids(
                     features,
