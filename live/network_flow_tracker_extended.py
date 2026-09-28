@@ -3,6 +3,8 @@ import time
 import threading
 import statistics
 from arrow import now
+import csv
+import os
 from extractors import unsw_extractor
 from extractors import cic2017_extractor
 import pandas as pd
@@ -20,6 +22,9 @@ TCP_ACTIVE_TIMEOUT = 300#60
 
 UDP_IDLE_TIMEOUT = 30
 UDP_ACTIVE_TIMEOUT = 60
+
+#save unlabled live data, as normal
+UNSW_NORMAL_CAPTURE_FILE = "unsw_live_normal_capture.csv"
 
 #------------------------------------------------------------
 #Information needed to be updated from IDS selection
@@ -1040,11 +1045,42 @@ class networkFlowTracker:
                     .extract_unsw_from_flow(flow)
                 )
 
+                # -------------------------------------------------
+                # Save raw UNSW-compatible live flow to CSV
+                # Activate only for collection normal dataflow
+                # -------------------------------------------------
+                """"
+                save_unsw_features_to_csv(
+                    features
+                )
+                """
+
+                #sanity check for usnw categorical values....
+                """
+                print("\nLIVE UNSW RAW CATEGORICAL VALUES")
+                print("proto   =", features["proto"])
+                print("service =", features["service"])
+                print("state   =", features["state"])
+                """
+                print("\n========================================")
+                print("UNSW FEATURES SENT TO IDS")
+                print("========================================")
+
+                for key, value in features.items():
+                    print(f"{key}: {value}")
+
+                print("========================================\n")
+
+                #----------------------------------------------
+                #bloc while pushing to csv
+                #---------------------------------------------
+                
                 send_flow_to_ids(
                     features,
                     flow,
                     dataset="unsw"
                 )
+                
 
             else:
 
@@ -1382,3 +1418,50 @@ def send_flow_to_ids(extracted_data, flow, dataset="unsw"):
             "Unexpected IDS error:",
             e
         )    
+
+def save_unsw_features_to_csv(features):
+    """
+    Append one UNSW feature dictionary to a CSV file.
+
+    The first call creates the file and writes the header.
+    Later calls append one row per flow.
+    """
+
+    file_exists = os.path.isfile(
+        UNSW_NORMAL_CAPTURE_FILE
+    )
+
+    with open(
+        UNSW_NORMAL_CAPTURE_FILE,
+        "a",
+        newline="",
+        encoding="utf-8"
+    ) as csvfile:
+
+        fieldnames = [
+            "capture_time",
+            *features.keys()
+        ]
+
+        writer = csv.DictWriter(
+            csvfile,
+            fieldnames=fieldnames
+        )
+
+        if not file_exists:
+            writer.writeheader()
+
+        row = {
+            "capture_time":
+                datetime.now().isoformat(
+                    timespec="seconds"
+                )
+        }
+
+        row.update(
+            features
+        )
+
+        writer.writerow(
+            row
+        )
