@@ -2,58 +2,128 @@ Network Monitoring System
 
 Overview
 
-The Network Monitoring System is part of the Passive Intrusion Detection System (IDS). It captures live network traffic, analyzes network flows, and sends extracted features to the IDS backend for machine-learning-based intrusion detection.
+The Network Monitoring System is a component of the Passive Intrusion Detection System (IDS).
+
+It captures live network traffic, tracks network flows, extracts relevant network features, and sends the collected information to the IDS backend for machine-learning-based intrusion detection.
+
+The system operates in passive mode, monitoring network activity without blocking or modifying traffic.
 
 Features
 
-Live network packet capture
+Live Packet Capture – Captures network packets from a selected network interface.
 
-Network flow tracking
+Network Flow Tracking – Groups packets into network flows for analysis.
 
-Network traffic feature extraction
+Feature Extraction – Extracts network traffic characteristics for machine-learning classification.
 
-Integration with the IDS prediction API
+IDS Integration – Sends extracted features to the IDS prediction API.
 
-Detection of normal and suspicious network activity
+Intrusion Detection – Identifies potentially malicious network flows.
 
-Passive monitoring without blocking traffic
+Passive Monitoring – Observes network traffic without interfering with network communications.
 
 Requirements
+
+Before running the Network Monitor, ensure the following are installed or available:
 
 Python 3
 
 Required Python libraries
 
-Npcap for packet capture on Windows
+Npcap (for packet capture on Windows)
 
-Running IDS backend
+Running Passive IDS backend
 
-Usage
+Running the Network Monitor
 
-Run the network monitor:
+The monitor can be started using either of the following methods.
 
-python -m live.network_packet_collector_collect_all_extended (or use run.bat)
-****Important : right now the sniffer is set to  sniffer = AsyncSniffer(
-        iface=interface,
-        #filter="host 208.65.102.229 and port 86", # my site for testing
-        #filter="host 8.8.8.8",
-        prn=packet_collector_test,
-        store=False
-    )
-	Use your own filter for testing a specific IP
+Option 1 – Python command
 
-Select the network interface to monitor.
+python -m live.network_packet_collector_collect_all_extended
 
-The system will start capturing network packets, extracting flow features, and sending completed flows to the IDS backend for classification.
+Option 2 – Windows batch file
+
+run.bat
+
+After starting the application:
+
+Select the network interface you want to monitor.
+
+The system will begin capturing live network traffic.
+
+Captured packets will be grouped into network flows.
+
+Flow features will be extracted and sent to the IDS backend for classification.
+
+Prediction results will identify traffic as NORMAL or ATTACK.
+
+Configuring the Packet Capture Filter
+
+Important: The network monitor currently uses the following AsyncSniffer configuration:
+
+sniffer = AsyncSniffer(
+    iface=interface,
+    #filter="host 208.65.102.229 and port 86",  # Test server
+    #filter="host 8.8.8.8",
+    prn=packet_collector_test,
+    store=False
+)
+
+By default, no packet filter is enabled, so the monitor captures all traffic visible on the selected network interface.
+
+Monitoring a Specific IP Address
+
+To monitor traffic associated with a specific IP address, enable the filter parameter:
+
+sniffer = AsyncSniffer(
+    iface=interface,
+    filter="host 192.168.1.100",
+    prn=packet_collector_test,
+    store=False
+)
+
+Monitoring a Specific IP Address and Port
+
+To capture only traffic associated with a particular IP address and port:
+
+sniffer = AsyncSniffer(
+    iface=interface,
+    filter="host 192.168.1.100 and port 80",
+    prn=packet_collector_test,
+    store=False
+)
+
+Note: Replace the example IP address and port with your own testing configuration.
 
 IDS Integration
 
-The monitor communicates with the IDS backend using:
+The Network Monitor communicates with the Passive IDS backend through an HTTP API.
+
+Prediction endpoint:
 
 POST http://localhost:8000/predict/unsw
 
-Prediction results identify network flows as NORMAL or ATTACK.
+The backend processes the extracted network features using the trained machine-learning model and returns a classification result.
 
-Note
+Possible classifications:
 
-This is a passive monitoring system. It detects potentially malicious network activity but does not block or modify network traffic.
+NORMAL – Traffic classified as normal.
+
+ATTACK – Traffic classified as potentially malicious.
+
+Limitations
+
+The IDS backend must be running to perform predictions.
+
+Packet capture requires appropriate permissions and a compatible capture driver.
+
+Detection accuracy depends on the trained machine-learning model and the quality of extracted features.
+
+Only traffic visible on the selected network interface can be monitored.
+
+Important Note
+
+This system is designed exclusively for passive intrusion detection.
+
+It monitors and analyzes network traffic but does not block connections, modify packets, or automatically prevent attacks.
