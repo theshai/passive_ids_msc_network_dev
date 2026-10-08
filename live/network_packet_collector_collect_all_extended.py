@@ -19,8 +19,8 @@ def start_sniffing(interface=None):
 
     sniffer = AsyncSniffer(
         iface=interface,
-        #filter="host 208.65.102.229 and port 86",
-        filter="host 8.8.8.8",
+        #filter="host 208.65.102.229 and port 86", # my site for testing
+        #filter="host 8.8.8.8",
         prn=packet_collector_test,
         store=False
     )
