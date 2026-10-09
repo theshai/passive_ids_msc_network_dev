@@ -1,6 +1,6 @@
-Network Monitoring System
+#Network Monitoring System
 
-Overview
+#Overview
 
 The Network Monitoring System is a component of the Passive Intrusion Detection System (IDS).
 
@@ -8,21 +8,21 @@ It captures live network traffic, tracks network flows, extracts relevant networ
 
 The system operates in passive mode, monitoring network activity without blocking or modifying traffic.
 
-Features
+##Features
 
-Live Packet Capture – Captures network packets from a selected network interface.
+Live Packet Capture - Captures network packets from a selected network interface.
 
-Network Flow Tracking – Groups packets into network flows for analysis.
+Network Flow Tracking - Groups packets into network flows for analysis.
 
-Feature Extraction – Extracts network traffic characteristics for machine-learning classification.
+Feature Extraction - Extracts network traffic characteristics for machine-learning classification.
 
-IDS Integration – Sends extracted features to the IDS prediction API.
+IDS Integration - Sends extracted features to the IDS prediction API.
 
-Intrusion Detection – Identifies potentially malicious network flows.
+Intrusion Detection - Identifies potentially malicious network flows.
 
-Passive Monitoring – Observes network traffic without interfering with network communications.
+Passive Monitoring - Observes network traffic without interfering with network communications.
 
-Requirements
+##Requirements
 
 Before running the Network Monitor, ensure the following are installed or available:
 
@@ -34,15 +34,15 @@ Npcap (for packet capture on Windows)
 
 Running Passive IDS backend
 
-Running the Network Monitor
+##Running the Network Monitor
 
 The monitor can be started using either of the following methods.
 
-Option 1 – Python command
+Option 1 - Python command
 
 python -m live.network_packet_collector_collect_all_extended
 
-Option 2 – Windows batch file
+Option 2 - Windows batch file
 
 run.bat
 
@@ -100,7 +100,7 @@ IDS Integration
 
 The Network Monitor communicates with the Passive IDS backend through an HTTP API.
 
-Prediction endpoint:
+##Prediction endpoint:
 
 POST http://localhost:8000/predict/unsw
 
@@ -108,11 +108,11 @@ The backend processes the extracted network features using the trained machine-l
 
 Possible classifications:
 
-NORMAL – Traffic classified as normal.
+NORMAL - Traffic classified as normal.
 
-ATTACK – Traffic classified as potentially malicious.
+ATTACK - Traffic classified as potentially malicious.
 
-Limitations
+##Limitations
 
 The IDS backend must be running to perform predictions.
 
